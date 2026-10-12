@@ -16,8 +16,8 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 /**
  * Spring Security configuration for REST APIs in the Standalone Chat Engine.
  */
-@Configuration
-@EnableWebSecurity
+// @Configuration
+// @EnableWebSecurity
 @EnableMethodSecurity(prePostEnabled = true) // Allows @PreAuthorize in controllers
 @RequiredArgsConstructor
 public class ChatHttpSecurityConfig {
