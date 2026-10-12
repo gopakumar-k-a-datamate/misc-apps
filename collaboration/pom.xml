@@ -83,7 +83,12 @@
             <version>4.4.2</version>
         </dependency>
 
-        <!-- Security & JWT -->
+        <!-- Security & JWT & Authz -->
+        <dependency>
+            <groupId>org.datamate</groupId>
+            <artifactId>bedrock-authz-starter</artifactId>
+            <version>1.0.0-SNAPSHOT</version>
+        </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-security</artifactId>
@@ -117,6 +122,11 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-test</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>
