@@ -29,6 +29,14 @@ public class InMemoryKeyRegistry implements KeyRegistry {
         return Optional.ofNullable(keys.get(kid));
     }
 
+    @Override
+    public void registerKey(String kid, PublicKey publicKey) {
+        keys.put(kid, publicKey);
+        if (logger != null) {
+            logger.info("Successfully registered public key for kid: {}", kid);
+        }
+    }
+
     /**
      * Registers a base64 encoded RSA public key.
      * 

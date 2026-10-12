@@ -15,9 +15,10 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 
 /**
  * Spring Security configuration for REST APIs in the Standalone Chat Engine.
+ * Enforces stateless JWT ticket-based authentication and method-level OPA authorization.
  */
-// @Configuration
-// @EnableWebSecurity
+@Configuration
+@EnableWebSecurity
 @EnableMethodSecurity(prePostEnabled = true) // Allows @PreAuthorize in controllers
 @RequiredArgsConstructor
 public class ChatHttpSecurityConfig {
@@ -26,10 +27,15 @@ public class ChatHttpSecurityConfig {
     private final ChatAuthenticationEntryPoint authenticationEntryPoint;
 
     @Bean
-    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+    public JwtTicketAuthFilter jwtTicketAuthFilter() {
+        return new JwtTicketAuthFilter(jwtVerifier);
+    }
+
+    @Bean
+    public SecurityFilterChain filterChain(HttpSecurity http, JwtTicketAuthFilter jwtTicketAuthFilter) throws Exception {
         return http
             .csrf(AbstractHttpConfigurer::disable)
-            .cors(AbstractHttpConfigurer::disable) // Configure properly based on deployment
+            .cors(AbstractHttpConfigurer::disable) // In production, configure with CorsConfigurationSource
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .exceptionHandling(exceptions -> exceptions
                 .authenticationEntryPoint(authenticationEntryPoint)
@@ -37,10 +43,10 @@ public class ChatHttpSecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/ws/**").permitAll() // WebSockets authenticated separately via interceptors
                 .requestMatchers("/actuator/health", "/actuator/info").permitAll()
-                .requestMatchers("/api/v1/dev/**").permitAll() // Allow generating dev tokens
+                .requestMatchers("/api/v1/collaboration/dev/**", "/api/v1/dev/**").permitAll() // Test tokens
                 .anyRequest().authenticated()
             )
-            .addFilterBefore(new JwtTicketAuthFilter(jwtVerifier), UsernamePasswordAuthenticationFilter.class)
+            .addFilterBefore(jwtTicketAuthFilter, UsernamePasswordAuthenticationFilter.class)
             .build();
     }
 }
