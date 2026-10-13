@@ -4,8 +4,10 @@ import com.datamate.bedrock.framework.storage.application.port.StorageService;
 import com.datamate.bedrock.framework.storage.domain.model.StorageObject;
 import org.datamate.collaboration.chat.application.dto.SendMessageCommand;
 import org.datamate.collaboration.chat.application.dto.SendMessageRequest;
+import org.datamate.collaboration.chat.application.mapper.MessageMapper;
 import org.datamate.collaboration.chat.application.port.out.AttachmentRepositoryPort;
 import org.datamate.collaboration.chat.application.port.out.DocumentConversionPort;
+import org.datamate.collaboration.chat.application.port.out.MessageBroadcastPort;
 import org.datamate.collaboration.chat.application.port.out.MessageRepositoryPort;
 import org.datamate.collaboration.chat.application.port.out.ThreadRepositoryPort;
 import org.datamate.collaboration.chat.domain.model.Attachment;
@@ -54,6 +56,12 @@ class SendMessageServiceTest {
 
     @Mock
     private DocumentConversionPort documentConversionPort;
+
+    @Mock
+    private MessageMapper messageMapper;
+
+    @Mock
+    private MessageBroadcastPort messageBroadcastPort;
 
     @InjectMocks
     private SendMessageService sendMessageService;
@@ -160,6 +168,60 @@ class SendMessageServiceTest {
         assertThat(savedMessage.isFile()).isTrue();
         assertThat(savedMessage.getAttachmentId()).isEqualTo(savedAttachment.getId());
         assertThat(savedMessage.getText()).isEqualTo("Here is the document");
+    }
+
+    @Test
+    @DisplayName("should persist message with multiple attachmentUrls and associate all attachments (Bug 8122)")
+    void shouldPersistMessage_WithMultipleAttachmentUrls_AndLinkAllToMessage() {
+        when(threadRepository.existsById(threadId)).thenReturn(true);
+        when(storageService.getMetadata(eq("chat-attachments"), eq("img1.png")))
+                .thenReturn(StorageObject.builder()
+                        .bucketName("chat-attachments")
+                        .objectKey("img1.png")
+                        .contentType("image/png")
+                        .size(1024L)
+                        .build());
+        when(storageService.getMetadata(eq("chat-attachments"), eq("img2.png")))
+                .thenReturn(StorageObject.builder()
+                        .bucketName("chat-attachments")
+                        .objectKey("img2.png")
+                        .contentType("image/png")
+                        .size(2048L)
+                        .build());
+        when(storageService.getMetadata(eq("chat-attachments"), eq("img3.png")))
+                .thenReturn(StorageObject.builder()
+                        .bucketName("chat-attachments")
+                        .objectKey("img3.png")
+                        .contentType("image/png")
+                        .size(4096L)
+                        .build());
+
+        SendMessageCommand multiAttachmentRequest = new SendMessageCommand(
+                "Multiple images",
+                List.of(
+                        "http://localhost:9000/chat-attachments/img1.png",
+                        "http://localhost:9000/chat-attachments/img2.png",
+                        "http://localhost:9000/chat-attachments/img3.png"
+                )
+        );
+
+        sendMessageService.sendMessage(threadId, senderId, multiAttachmentRequest);
+
+        ArgumentCaptor<Attachment> attachmentCaptor = ArgumentCaptor.forClass(Attachment.class);
+        verify(attachmentRepository, times(3)).save(attachmentCaptor.capture());
+        List<Attachment> savedAttachments = attachmentCaptor.getAllValues();
+        assertThat(savedAttachments).hasSize(3);
+
+        ArgumentCaptor<Message> messageCaptor = ArgumentCaptor.forClass(Message.class);
+        verify(messageRepository).save(messageCaptor.capture());
+        Message savedMessage = messageCaptor.getValue();
+        assertThat(savedMessage.isFile()).isTrue();
+        assertThat(savedMessage.getAttachmentIds()).hasSize(3);
+        assertThat(savedMessage.getAttachmentIds()).containsExactly(
+                savedAttachments.get(0).getId(),
+                savedAttachments.get(1).getId(),
+                savedAttachments.get(2).getId()
+        );
     }
 
     @Test

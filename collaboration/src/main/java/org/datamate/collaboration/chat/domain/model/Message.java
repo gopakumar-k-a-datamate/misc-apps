@@ -5,7 +5,7 @@ import org.datamate.collaboration.exception.CollaborationErrorCodes;
 import org.datamate.collaboration.exception.DomainValidationException;
 
 import java.time.Instant;
-
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -30,10 +30,11 @@ public class Message {
     private final boolean file;
     private final boolean systemMessage;
     private final UUID attachmentId;
+    private final List<UUID> attachmentIds;
     private final UUID parentId;
     private final Instant timestamp;
 
-    private Message(UUID id, UUID threadId, String senderId, String text, boolean file, boolean systemMessage, UUID attachmentId, UUID parentId, Instant timestamp) {
+    private Message(UUID id, UUID threadId, String senderId, String text, boolean file, boolean systemMessage, List<UUID> attachmentIds, UUID parentId, Instant timestamp) {
         requireNonNull(id, "messageId");
         requireNonNull(threadId, "threadId");
         requireNonNull(senderId, "senderId");
@@ -45,16 +46,16 @@ public class Message {
         this.text = text;
         this.file = file;
         this.systemMessage = systemMessage;
-        this.attachmentId = attachmentId;
+        this.attachmentIds = attachmentIds != null ? java.util.List.copyOf(attachmentIds) : java.util.List.of();
+        this.attachmentId = !this.attachmentIds.isEmpty() ? this.attachmentIds.get(0) : null;
         this.parentId = parentId;
         this.timestamp = timestamp;
     }
 
     /**
-     * Factory method for creating a brand new Message.
-     * Encapsulates ID generation and timestamping within the domain.
+     * Factory method for creating a brand new Message with multiple attachments.
      */
-    public static Message create(UUID threadId, String senderId, String text, boolean file, boolean systemMessage, UUID attachmentId, UUID parentId) {
+    public static Message create(UUID threadId, String senderId, String text, boolean file, boolean systemMessage, List<UUID> attachmentIds, UUID parentId) {
         return new Message(
                 UuidV7Generator.generate(),
                 threadId,
@@ -62,16 +63,43 @@ public class Message {
                 text,
                 file,
                 systemMessage,
-                attachmentId,
-                parentId, Instant.now()
+                attachmentIds,
+                parentId,
+                Instant.now()
+        );
+    }
+
+    /**
+     * Factory method for creating a brand new Message with a single attachment (legacy compatibility).
+     */
+    public static Message create(UUID threadId, String senderId, String text, boolean file, boolean systemMessage, UUID attachmentId, UUID parentId) {
+        return create(
+                threadId,
+                senderId,
+                text,
+                file,
+                systemMessage,
+                attachmentId != null ? java.util.List.of(attachmentId) : java.util.List.of(),
+                parentId
         );
     }
 
     /**
      * Factory method for reconstituting an existing Message from persistence.
      */
-    public static Message restore(UUID id, UUID threadId, String senderId, String text, boolean file, boolean systemMessage, UUID attachmentId, UUID parentId, Instant timestamp) {
-        return new Message(id, threadId, senderId, text, file, systemMessage, attachmentId, parentId, timestamp);
+    public static Message restore(UUID id, UUID threadId, String senderId, String text, boolean file, boolean systemMessage, List<UUID> attachmentIds, UUID parentId, Instant timestamp) {
+        return new Message(id, threadId, senderId, text, file, systemMessage, attachmentIds, parentId, timestamp);
+    }
+
+    public List<UUID> getAttachmentIds() {
+        if (attachmentIds != null && !attachmentIds.isEmpty()) {
+            return attachmentIds;
+        }
+        return attachmentId != null ? java.util.List.of(attachmentId) : java.util.List.of();
+    }
+
+    public UUID getAttachmentId() {
+        return (attachmentIds != null && !attachmentIds.isEmpty()) ? attachmentIds.get(0) : this.attachmentId;
     }
 
     @Override
