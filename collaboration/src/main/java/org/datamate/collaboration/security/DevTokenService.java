@@ -21,7 +21,7 @@ import java.util.Date;
  * Active strictly on development and test profiles.
  */
 @Service
-@Profile({"dev", "local", "test"})
+@Profile({"dev", "local", "test", "default"})
 @RequiredArgsConstructor
 public class DevTokenService {
 

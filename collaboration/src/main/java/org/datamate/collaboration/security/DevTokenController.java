@@ -14,7 +14,7 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @RestController
 @RequestMapping({"/api/v1/collaboration/dev", "/api/v1/dev"})
-@Profile({"dev", "local", "test"})
+@Profile({"dev", "local", "test", "default"})
 @RequiredArgsConstructor
 public class DevTokenController {
 
