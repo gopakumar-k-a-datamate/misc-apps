@@ -94,6 +94,20 @@ public class CollaborationExceptionHandler extends GlobalExceptionHandler {
         return pd;
     }
 
+    @ExceptionHandler(org.datamate.authz.exception.AuthzDeniedException.class)
+    public ProblemDetail handleAuthzDenied(org.datamate.authz.exception.AuthzDeniedException ex, HttpServletRequest request) {
+        if (logger != null) {
+            logger.warn("Access denied on [{}]: {}", request.getRequestURI(), ex.getMessage());
+        }
+
+        ProblemDetail pd = ProblemDetail.forStatusAndDetail(HttpStatus.FORBIDDEN, ex.getMessage());
+        pd.setType(URI.create("about:blank"));
+        pd.setTitle("Forbidden");
+        pd.setProperty("errorCode", "AUTH_FORBIDDEN");
+        pd.setProperty("timestamp", OffsetDateTime.now().toString());
+        return pd;
+    }
+
     @ExceptionHandler(DomainValidationException.class)
     public ProblemDetail handleDomainValidation(DomainValidationException ex) {
         String msg = resolveMessage(ex);
