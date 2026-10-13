@@ -27,9 +27,13 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * Application Service for sending messages.
@@ -73,8 +77,8 @@ public class SendMessageService implements SendMessageUseCase {
         validateCommand(command);
         ensureThreadExists(threadId);
 
-        UUID attachmentId = resolveAttachmentId(threadId, command);
-        boolean isFile = attachmentId != null;
+        List<UUID> attachmentIds = resolveAttachmentIds(threadId, command);
+        boolean isFile = !attachmentIds.isEmpty();
 
         Message message = Message.create(
                 threadId,
@@ -82,18 +86,23 @@ public class SendMessageService implements SendMessageUseCase {
                 command.text(),
                 isFile,
                 false,
-                attachmentId,
+                attachmentIds,
                 command.parentId()
         );
 
         Message savedMessage = messageRepository.save(message);
 
-        Attachment attachment = null;
-        if (attachmentId != null) {
-            attachment = attachmentRepository.findById(attachmentId).orElse(null);
+        List<Attachment> attachments = List.of();
+        if (!attachmentIds.isEmpty()) {
+            Map<UUID, Attachment> attachmentMap = attachmentRepository.findAllById(attachmentIds).stream()
+                    .collect(Collectors.toMap(Attachment::getId, a -> a, (a1, a2) -> a1));
+            attachments = attachmentIds.stream()
+                    .map(attachmentMap::get)
+                    .filter(Objects::nonNull)
+                    .toList();
         }
 
-        MessageDto messageDto = messageMapper.toDto(savedMessage != null ? savedMessage : message, attachment);
+        MessageDto messageDto = messageMapper.toDto(savedMessage != null ? savedMessage : message, attachments);
         messageBroadcastPort.broadcastMessage(threadId, messageDto);
     }
 
@@ -123,19 +132,23 @@ public class SendMessageService implements SendMessageUseCase {
     }
 
     /**
-     * Resolves the attachment ID from the command, either by using a direct attachment ID
-     * or by processing an uploaded attachment URL.
+     * Resolves all attachment IDs from the command, either by using a direct attachment ID
+     * or by processing all uploaded attachment URLs.
      */
-    private UUID resolveAttachmentId(UUID threadId, SendMessageCommand command) {
+    private List<UUID> resolveAttachmentIds(UUID threadId, SendMessageCommand command) {
+        List<UUID> attachmentIds = new ArrayList<>();
+
         if (command.attachmentId() != null) {
-            return command.attachmentId();
+            attachmentIds.add(command.attachmentId());
         }
 
         if (command.attachmentUrls() != null && !command.attachmentUrls().isEmpty()) {
-            return processAttachmentUrl(threadId, command.attachmentUrls().get(0));
+            for (String url : command.attachmentUrls()) {
+                attachmentIds.add(processAttachmentUrl(threadId, url));
+            }
         }
 
-        return null;
+        return attachmentIds;
     }
 
     /**

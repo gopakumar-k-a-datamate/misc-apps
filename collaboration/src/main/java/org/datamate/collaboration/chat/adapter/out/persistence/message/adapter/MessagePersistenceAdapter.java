@@ -67,13 +67,21 @@ public class MessagePersistenceAdapter implements MessageRepositoryPort {
         entity.setText(message.getText());
         entity.setFile(message.isFile());
         entity.setSystemMessage(message.isSystemMessage());
-        entity.setAttachmentId(message.getAttachmentId());
+        List<UUID> attachmentIds = message.getAttachmentIds() != null
+                ? new java.util.ArrayList<>(message.getAttachmentIds())
+                : new java.util.ArrayList<>();
+        entity.setAttachmentIds(attachmentIds);
+        entity.setAttachmentId(!attachmentIds.isEmpty() ? attachmentIds.get(0) : message.getAttachmentId());
         entity.setParentId(message.getParentId());
         entity.setTimestamp(message.getTimestamp());
         return entity;
     }
 
     private Message toDomain(MessageJpaEntity entity) {
+        List<UUID> attachmentIds = entity.getAttachmentIds() != null && !entity.getAttachmentIds().isEmpty()
+                ? entity.getAttachmentIds()
+                : (entity.getAttachmentId() != null ? List.of(entity.getAttachmentId()) : List.of());
+
         return Message.restore(
                 entity.getId(),
                 entity.getThreadId(),
@@ -81,8 +89,9 @@ public class MessagePersistenceAdapter implements MessageRepositoryPort {
                 entity.getText(),
                 entity.isFile(),
                 entity.isSystemMessage(),
-                entity.getAttachmentId(),
-                entity.getParentId(), entity.getTimestamp()
+                attachmentIds,
+                entity.getParentId(),
+                entity.getTimestamp()
         );
     }
 }
