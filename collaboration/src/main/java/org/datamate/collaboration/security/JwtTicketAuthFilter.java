@@ -32,14 +32,25 @@ public class JwtTicketAuthFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
         
+        String token = null;
         final String authHeader = request.getHeader(HttpHeaders.AUTHORIZATION);
 
-        if (authHeader == null || !authHeader.startsWith(BEARER_PREFIX)) {
+        if (authHeader != null && authHeader.startsWith(BEARER_PREFIX)) {
+            token = authHeader.substring(BEARER_PREFIX.length()).trim();
+        } else {
+            token = request.getParameter("ticket");
+            if (token == null || token.isBlank()) {
+                token = request.getParameter("token");
+            }
+            if (token != null) {
+                token = token.trim();
+            }
+        }
+
+        if (token == null || token.isBlank()) {
             filterChain.doFilter(request, response);
             return;
         }
-
-        final String token = authHeader.substring(BEARER_PREFIX.length());
 
         try {
             Claims claims = jwtVerifier.verify(token);

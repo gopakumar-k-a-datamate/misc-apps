@@ -114,4 +114,34 @@ public class ChatSecurityIntegrationTest {
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.errorCode").value("AUTH_FORBIDDEN"));
     }
+
+    @Test
+    public void testGetMessages_WithValidTicketQueryParam_ShouldSucceed() throws Exception {
+        UUID threadId = UUID.fromString("00000000-0000-0000-0000-000000000000");
+
+        io.jsonwebtoken.Claims claims = Mockito.mock(io.jsonwebtoken.Claims.class);
+        Mockito.when(claims.getSubject()).thenReturn("user-1");
+        Mockito.when(claims.get("threadId", String.class)).thenReturn(threadId.toString());
+        Mockito.when(jwtVerifier.verify("valid-ticket")).thenReturn(claims);
+        Mockito.when(getMessagesUseCase.getMessages(org.mockito.ArgumentMatchers.eq(threadId), org.mockito.ArgumentMatchers.any(org.datamate.collaboration.chat.application.dto.GetMessagesQuery.class)))
+                .thenReturn(new com.datamate.bedrock.framework.common.pagination.Paged<>(java.util.List.of(), 1, 10, 0, 0, false, false));
+
+        mockMvc.perform(get("/api/v1/collaboration/threads/" + threadId + "/messages?page=1&size=10&ticket=valid-ticket"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    public void testGetMessages_WithValidTokenQueryParam_ShouldSucceed() throws Exception {
+        UUID threadId = UUID.fromString("00000000-0000-0000-0000-000000000000");
+
+        io.jsonwebtoken.Claims claims = Mockito.mock(io.jsonwebtoken.Claims.class);
+        Mockito.when(claims.getSubject()).thenReturn("user-2");
+        Mockito.when(claims.get("threadId", String.class)).thenReturn(threadId.toString());
+        Mockito.when(jwtVerifier.verify("valid-token")).thenReturn(claims);
+        Mockito.when(getMessagesUseCase.getMessages(org.mockito.ArgumentMatchers.eq(threadId), org.mockito.ArgumentMatchers.any(org.datamate.collaboration.chat.application.dto.GetMessagesQuery.class)))
+                .thenReturn(new com.datamate.bedrock.framework.common.pagination.Paged<>(java.util.List.of(), 1, 10, 0, 0, false, false));
+
+        mockMvc.perform(get("/api/v1/collaboration/threads/" + threadId + "/messages?page=1&size=10&token=valid-token"))
+                .andExpect(status().isOk());
+    }
 }

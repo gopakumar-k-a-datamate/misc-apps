@@ -35,6 +35,11 @@ public class TicketChannelInterceptor implements ChannelInterceptor {
         if (StompCommand.CONNECT.equals(accessor.getCommand())) {
             Map<String, Object> sessionAttributes = accessor.getSessionAttributes();
             if (sessionAttributes != null && sessionAttributes.get("threadId") != null) {
+                String userId = (String) sessionAttributes.get("userId");
+                String threadId = (String) sessionAttributes.get("threadId");
+                if (accessor.isMutable()) {
+                    accessor.setUser(new TicketPrincipal(userId, threadId));
+                }
                 return message; // Already authenticated at HTTP handshake
             }
 
@@ -58,6 +63,9 @@ public class TicketChannelInterceptor implements ChannelInterceptor {
                     if (sessionAttributes != null) {
                         sessionAttributes.put("userId", userId);
                         sessionAttributes.put("threadId", threadId);
+                    }
+                    if (accessor.isMutable()) {
+                        accessor.setUser(new TicketPrincipal(userId, threadId));
                     }
                 } catch (JwtException e) {
                     throw new org.springframework.messaging.MessagingException("Invalid authentication ticket: " + e.getMessage());
