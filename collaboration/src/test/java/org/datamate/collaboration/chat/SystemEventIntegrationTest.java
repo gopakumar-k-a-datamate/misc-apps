@@ -54,6 +54,9 @@ class SystemEventIntegrationTest {
     @MockBean
     private SimpMessagingTemplate messagingTemplate;
 
+    @Autowired
+    private org.datamate.collaboration.chat.adapter.in.messaging.SystemEventRabbitListener systemEventRabbitListener;
+
     @Test
     @DisplayName("Should consume simulated broker event, save to database as system message, and broadcast to WebSocket")
     void shouldPersistSystemEventToDatabase_AndBroadcastToWebSocketTopic() {
@@ -90,6 +93,42 @@ class SystemEventIntegrationTest {
         assertThat(savedEntity.getTimestamp()).isNotNull();
 
         // 4. Verify real-time broadcast to active STOMP WebSocket topic
+        verify(messagingTemplate).convertAndSend(eq("/topic/thread." + threadId), any(MessageDto.class));
+    }
+
+    @Test
+    @DisplayName("Should process incoming broker event payload via RabbitMQ listener adapter end-to-end")
+    void shouldProcessIncomingBrokerEvent_ViaListener_EndToEnd() {
+        UUID threadId = UUID.randomUUID();
+        String eventText = "Canteen order #3021 prepared for pickup";
+        org.datamate.collaboration.chat.adapter.in.messaging.dto.ChatSystemEventPayload payload =
+                new org.datamate.collaboration.chat.adapter.in.messaging.dto.ChatSystemEventPayload(
+                        threadId,
+                        "CANTEEN_SYSTEM",
+                        "ORDER_STATUS_CHANGED",
+                        eventText,
+                        null,
+                        null,
+                        java.time.Instant.now()
+                );
+
+        // Simulate incoming broker delivery to the consumer
+        systemEventRabbitListener.onSystemEvent(payload);
+
+        // Verify thread lazily created
+        assertThat(threadJpaRepository.findById(threadId)).isPresent();
+
+        // Verify message persisted as system message
+        java.util.List<MessageJpaEntity> messages = messageJpaRepository.findByThreadIdOrderByTimestampDesc(
+                threadId, org.springframework.data.domain.PageRequest.of(0, 10)).getContent();
+        assertThat(messages).hasSize(1);
+        MessageJpaEntity savedMessage = messages.get(0);
+        assertThat(savedMessage.getSenderId()).isEqualTo("CANTEEN_SYSTEM");
+        assertThat(savedMessage.getText()).isEqualTo(eventText);
+        assertThat(savedMessage.isSystemMessage()).isTrue();
+        assertThat(savedMessage.isFile()).isFalse();
+
+        // Verify WebSocket broadcast
         verify(messagingTemplate).convertAndSend(eq("/topic/thread." + threadId), any(MessageDto.class));
     }
 }
