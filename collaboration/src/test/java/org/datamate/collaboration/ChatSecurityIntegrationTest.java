@@ -17,7 +17,9 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import org.datamate.collaboration.chat.adapter.in.rest.ChatController;
@@ -25,17 +27,17 @@ import org.datamate.collaboration.chat.application.port.in.GetMessagesUseCase;
 import org.datamate.collaboration.chat.application.port.in.SendMessageUseCase;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
-import org.springframework.context.annotation.ComponentScan;
-import org.springframework.context.annotation.FilterType;
 import org.springframework.context.annotation.Import;
 import org.datamate.collaboration.config.CollaborationExceptionHandler;
+import com.datamate.bedrock.framework.common.exception.config.ExceptionProperties;
+import com.datamate.bedrock.framework.common.exception.service.MessageResolver;
 
-@WebMvcTest(controllers = ChatController.class,
-        excludeFilters = @ComponentScan.Filter(type = FilterType.ASSIGNABLE_TYPE, classes = CollaborationExceptionHandler.class))
+@WebMvcTest(controllers = ChatController.class)
 @Import({org.datamate.collaboration.security.ChatThreadAccessPreAuthorize.class, 
          org.datamate.collaboration.config.ChatHttpSecurityConfig.class,
          org.datamate.collaboration.config.ChatAuthenticationEntryPoint.class,
-         org.datamate.collaboration.security.JwtTicketAuthFilter.class})
+         org.datamate.collaboration.security.JwtTicketAuthFilter.class,
+         CollaborationExceptionHandler.class})
 public class ChatSecurityIntegrationTest {
 
     @Autowired
@@ -53,6 +55,12 @@ public class ChatSecurityIntegrationTest {
     @MockBean
     private GetMessagesUseCase getMessagesUseCase;
 
+    @MockBean
+    private MessageResolver messageResolver;
+
+    @MockBean
+    private ExceptionProperties exceptionProperties;
+
     @Test
     public void testSendMessage_NoAuth_ShouldReturn401() throws Exception {
         UUID threadId = UUID.randomUUID();
@@ -66,7 +74,8 @@ public class ChatSecurityIntegrationTest {
         mockMvc.perform(post("/api/v1/collaboration/threads/" + threadId + "/messages")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(jsonPayload))
-                .andExpect(status().isUnauthorized());
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.properties.errorCode").value("AUTH_UNAUTHORIZED"));
     }
 
     @Test
@@ -80,11 +89,29 @@ public class ChatSecurityIntegrationTest {
                 }
                 """;
 
-        // Even with a generic @WithMockUser, the ChatThreadAccessPreAuthorize expects a TicketPrincipal
-        // So this should fail the PreAuthorize check and throw AccessDeniedException (403)
         mockMvc.perform(post("/api/v1/collaboration/threads/" + threadId + "/messages")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(jsonPayload))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.errorCode").value("AUTH_FORBIDDEN"));
+    }
+
+    @Test
+    public void testGetMessages_NoAuth_ShouldReturn401() throws Exception {
+        UUID threadId = UUID.fromString("00000000-0000-0000-0000-000000000000");
+
+        mockMvc.perform(get("/api/v1/collaboration/threads/" + threadId + "/messages?page=1&size=10"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.properties.errorCode").value("AUTH_UNAUTHORIZED"));
+    }
+
+    @Test
+    @WithMockUser
+    public void testGetMessages_InvalidPrincipal_ShouldReturn403() throws Exception {
+        UUID threadId = UUID.fromString("00000000-0000-0000-0000-000000000000");
+
+        mockMvc.perform(get("/api/v1/collaboration/threads/" + threadId + "/messages?page=1&size=10"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.errorCode").value("AUTH_FORBIDDEN"));
     }
 }

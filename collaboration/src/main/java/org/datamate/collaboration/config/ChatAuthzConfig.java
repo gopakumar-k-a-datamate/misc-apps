@@ -50,26 +50,41 @@ public class ChatAuthzConfig {
 
         return (String namespace, AuthorizationContext context) -> {
             if (opaEnabled) {
-                EvaluationResult result = restClient.evaluate(namespace, context);
-                if (result.allowed()) {
-                    return result;
-                }
-
-                // If OPA connection failed (I/O error / unreachable sidecar)
-                // In local/dev environments, fallback to delegated ticket thread-containment evaluation
-                boolean isDevMode = activeProfile.contains("dev") 
-                        || activeProfile.contains("local") 
-                        || activeProfile.contains("default")
-                        || activeProfile.contains("test");
-
-                if (isDevMode && result.message() != null && result.message().contains("Access Denied")) {
-                    if (logger != null) {
-                        logger.warn("OPA sidecar unreachable at {}. Falling back to Delegated Ticket containment verification.", 
-                                opaProperties.getEvaluationUrl());
+                try {
+                    EvaluationResult result = restClient.evaluate(namespace, context);
+                    if (result != null && result.allowed()) {
+                        return result;
                     }
-                    return evaluateDelegatedTicketContainment(context);
+
+                    // In local/dev environments, fallback to delegated ticket thread-containment evaluation
+                    boolean isDevMode = activeProfile.contains("dev") 
+                            || activeProfile.contains("local") 
+                            || activeProfile.contains("default")
+                            || activeProfile.contains("test");
+
+                    if (isDevMode) {
+                        if (logger != null) {
+                            logger.warn("OPA evaluation returned denied. Falling back to Delegated Ticket containment verification.");
+                        }
+                        return evaluateDelegatedTicketContainment(context);
+                    }
+                    return result != null ? result : EvaluationResult.denied("OPA evaluation returned null result");
+                } catch (Exception e) {
+                    // OPA sidecar unreachable (e.g. connection refused) or returned error
+                    boolean isDevMode = activeProfile.contains("dev") 
+                            || activeProfile.contains("local") 
+                            || activeProfile.contains("default")
+                            || activeProfile.contains("test");
+
+                    if (isDevMode) {
+                        if (logger != null) {
+                            logger.warn("OPA sidecar unreachable at {}: {}. Falling back to Delegated Ticket containment verification.", 
+                                    opaProperties.getEvaluationUrl(), e.getMessage());
+                        }
+                        return evaluateDelegatedTicketContainment(context);
+                    }
+                    return EvaluationResult.denied("OPA sidecar error: " + e.getMessage());
                 }
-                return result;
             }
 
             return evaluateDelegatedTicketContainment(context);

@@ -41,7 +41,7 @@ public class ChatHttpSecurityConfig {
                 .authenticationEntryPoint(authenticationEntryPoint)
             )
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/ws/**").permitAll() // WebSockets authenticated separately via interceptors
+                .requestMatchers("/ws", "/ws/**", "/ws-sockjs", "/ws-sockjs/**").permitAll() // WebSockets authenticated separately via interceptors
                 .requestMatchers("/actuator/health", "/actuator/info").permitAll()
                 .requestMatchers("/api/v1/collaboration/dev/**", "/api/v1/dev/**").permitAll() // Test tokens
                 .anyRequest().authenticated()

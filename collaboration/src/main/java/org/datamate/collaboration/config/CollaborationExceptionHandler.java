@@ -108,6 +108,46 @@ public class CollaborationExceptionHandler extends GlobalExceptionHandler {
         return pd;
     }
 
+    @ExceptionHandler(org.springframework.security.access.AccessDeniedException.class)
+    public ProblemDetail handleAccessDenied(org.springframework.security.access.AccessDeniedException ex, HttpServletRequest request) {
+        org.springframework.security.core.Authentication auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
+            if (logger != null) {
+                logger.warn("Unauthorized request on [{}]: {}", request.getRequestURI(), ex.getMessage());
+            }
+            ProblemDetail pd = ProblemDetail.forStatusAndDetail(HttpStatus.UNAUTHORIZED, "Invalid or missing authentication ticket");
+            pd.setType(URI.create("about:blank"));
+            pd.setTitle("Unauthorized");
+            pd.setProperty("errorCode", "AUTH_UNAUTHORIZED");
+            pd.setProperty("timestamp", OffsetDateTime.now().toString());
+            return pd;
+        }
+
+        if (logger != null) {
+            logger.warn("Access denied on [{}]: {}", request.getRequestURI(), ex.getMessage());
+        }
+        ProblemDetail pd = ProblemDetail.forStatusAndDetail(HttpStatus.FORBIDDEN, ex.getMessage());
+        pd.setType(URI.create("about:blank"));
+        pd.setTitle("Forbidden");
+        pd.setProperty("errorCode", "AUTH_FORBIDDEN");
+        pd.setProperty("timestamp", OffsetDateTime.now().toString());
+        return pd;
+    }
+
+    @ExceptionHandler(org.springframework.security.core.AuthenticationException.class)
+    public ProblemDetail handleAuthentication(org.springframework.security.core.AuthenticationException ex, HttpServletRequest request) {
+        if (logger != null) {
+            logger.warn("Authentication failed on [{}]: {}", request.getRequestURI(), ex.getMessage());
+        }
+
+        ProblemDetail pd = ProblemDetail.forStatusAndDetail(HttpStatus.UNAUTHORIZED, "Invalid or missing authentication ticket");
+        pd.setType(URI.create("about:blank"));
+        pd.setTitle("Unauthorized");
+        pd.setProperty("errorCode", "AUTH_UNAUTHORIZED");
+        pd.setProperty("timestamp", OffsetDateTime.now().toString());
+        return pd;
+    }
+
     @ExceptionHandler(DomainValidationException.class)
     public ProblemDetail handleDomainValidation(DomainValidationException ex) {
         String msg = resolveMessage(ex);

@@ -68,7 +68,8 @@ public class JwtTicketAuthFilter extends OncePerRequestFilter {
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String path = request.getRequestURI();
-        // Skip websocket endpoints as they are handled by HandshakeInterceptors
-        return path.startsWith("/ws/");
+        // Skip websocket endpoints as they are handled by HandshakeInterceptors and STOMP channel interceptor
+        return path.equals("/ws") || path.startsWith("/ws/") 
+                || path.equals("/ws-sockjs") || path.startsWith("/ws-sockjs/");
     }
 }

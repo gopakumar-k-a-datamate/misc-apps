@@ -28,16 +28,16 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
-        // Primary STOMP endpoint with SockJS fallback
-        registry.addEndpoint("/ws")
-                .setAllowedOriginPatterns("*")
-                .addInterceptors(handshakeInterceptor)
-                .withSockJS();
-
-        // Plain WebSocket endpoint for clients not using SockJS
+        // Plain WebSocket endpoint for clients not using SockJS (Flutter, mobile, Postman, ws://...)
         registry.addEndpoint("/ws")
                 .setAllowedOriginPatterns("*")
                 .addInterceptors(handshakeInterceptor);
+
+        // SockJS fallback endpoint (e.g., for browser SockJS clients)
+        registry.addEndpoint("/ws-sockjs")
+                .setAllowedOriginPatterns("*")
+                .addInterceptors(handshakeInterceptor)
+                .withSockJS();
     }
 
     @Override
