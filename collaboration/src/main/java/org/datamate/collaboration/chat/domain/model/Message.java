@@ -90,7 +90,7 @@ public class Message {
      */
     public static Message createSystemMessage(UUID threadId, String senderId, String text, UUID parentId) {
         requireNonNull(text, "text");
-        return create(threadId, senderId, text, false, true, null, parentId);
+        return create(threadId, senderId, text, false, true, List.of(), parentId);
     }
 
     /**
