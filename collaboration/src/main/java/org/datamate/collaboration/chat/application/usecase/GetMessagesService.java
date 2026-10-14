@@ -32,18 +32,23 @@ public class GetMessagesService implements GetMessagesUseCase {
     public Paged<MessageDto> getMessages(UUID threadId, PageQuery query) {
         Paged<Message> messagesPaged = messageRepository.findByThreadId(threadId, query);
         
-        List<UUID> attachmentIds = messagesPaged.content().stream()
+        List<UUID> allAttachmentIds = messagesPaged.content().stream()
                 .filter(Message::isFile)
-                .map(Message::getAttachmentId)
+                .flatMap(msg -> msg.getAttachmentIds().stream())
                 .filter(java.util.Objects::nonNull)
+                .distinct()
                 .toList();
 
-        Map<UUID, Attachment> attachmentMap = attachmentRepository.findAllById(attachmentIds).stream()
-                .collect(Collectors.toMap(Attachment::getId, a -> a));
+        Map<UUID, Attachment> attachmentMap = allAttachmentIds.isEmpty() ? Map.of() :
+                attachmentRepository.findAllById(allAttachmentIds).stream()
+                        .collect(Collectors.toMap(Attachment::getId, a -> a, (a1, a2) -> a1));
 
         return messagesPaged.map(msg -> {
-            Attachment attachment = msg.getAttachmentId() != null ? attachmentMap.get(msg.getAttachmentId()) : null;
-            return messageMapper.toDto(msg, attachment);
+            List<Attachment> attachments = msg.getAttachmentIds().stream()
+                    .map(attachmentMap::get)
+                    .filter(java.util.Objects::nonNull)
+                    .toList();
+            return messageMapper.toDto(msg, attachments);
         });
     }
 

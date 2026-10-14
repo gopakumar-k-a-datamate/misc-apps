@@ -18,15 +18,16 @@ import java.util.stream.Collectors;
 @Getter
 public class TicketAuthentication extends AbstractAuthenticationToken {
 
-    private final String sub;
-    private final String threadId;
+    private final TicketPrincipal principal;
     private final transient Claims claims; // Claims is not serializable, mark transient
 
     public TicketAuthentication(Claims claims) {
         super(extractAuthorities(claims));
         this.claims = claims;
-        this.sub = claims.getSubject();
-        this.threadId = claims.get("threadId", String.class);
+        this.principal = new TicketPrincipal(
+                claims.getSubject(),
+                claims.get("threadId", String.class)
+        );
         setAuthenticated(true);
     }
 
@@ -50,6 +51,14 @@ public class TicketAuthentication extends AbstractAuthenticationToken {
 
     @Override
     public Object getPrincipal() {
-        return this.sub;
+        return this.principal;
+    }
+    
+    public String getSub() {
+        return this.principal.getUserId();
+    }
+    
+    public String getThreadId() {
+        return this.principal.getThreadId();
     }
 }

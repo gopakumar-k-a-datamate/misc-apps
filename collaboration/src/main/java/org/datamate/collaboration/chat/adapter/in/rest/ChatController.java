@@ -11,6 +11,7 @@ import org.datamate.collaboration.chat.application.port.in.GetMessagesUseCase;
 import org.datamate.collaboration.chat.application.port.in.SendMessageUseCase;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.security.Principal;
@@ -35,6 +36,7 @@ public class ChatController {
     private final SendMessageUseCase sendMessageUseCase;
     private final GetMessagesUseCase getMessagesUseCase;
 
+    @PreAuthorize("@chatAuthorizer.hasAccess(#threadId.toString(), 'WRITE')")
     @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
     @ResponseStatus(HttpStatus.CREATED)
     public void sendMessage(
@@ -46,6 +48,7 @@ public class ChatController {
         sendMessageUseCase.sendMessage(threadId, senderId, command);
     }
 
+    @PreAuthorize("@chatAuthorizer.hasAccess(#threadId.toString(), 'READ')")
     @GetMapping
     public PaginatedResponse<MessageDto> getMessages(
             @PathVariable UUID threadId,
