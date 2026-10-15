@@ -196,4 +196,38 @@ class WebSocketSecurityTest {
                 .isInstanceOf(MessagingException.class)
                 .hasMessageContaining("Missing thread context");
     }
+
+    @Test
+    @DisplayName("STOMP SEND with WRITE permission should succeed")
+    void testStompSend_WithWritePermission_ShouldSucceed() {
+        StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.SEND);
+        accessor.setDestination("/app/thread-123.sendMessage");
+        Map<String, Object> sessionAttributes = new HashMap<>();
+        sessionAttributes.put("threadId", "thread-123");
+        sessionAttributes.put("userId", "john");
+        sessionAttributes.put("permissions", java.util.List.of("READ", "WRITE"));
+        accessor.setSessionAttributes(sessionAttributes);
+        Message<?> message = MessageBuilder.createMessage(new byte[0], accessor.getMessageHeaders());
+
+        Message<?> result = channelInterceptor.preSend(message, messageChannel);
+
+        assertThat(result).isNotNull();
+    }
+
+    @Test
+    @DisplayName("STOMP SEND with READ-only permission should be rejected")
+    void testStompSend_WithReadOnlyPermission_ShouldThrowMessagingException() {
+        StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.SEND);
+        accessor.setDestination("/app/thread-123.sendMessage");
+        Map<String, Object> sessionAttributes = new HashMap<>();
+        sessionAttributes.put("threadId", "thread-123");
+        sessionAttributes.put("userId", "reader");
+        sessionAttributes.put("permissions", java.util.List.of("READ"));
+        accessor.setSessionAttributes(sessionAttributes);
+        Message<?> message = MessageBuilder.createMessage(new byte[0], accessor.getMessageHeaders());
+
+        assertThatThrownBy(() -> channelInterceptor.preSend(message, messageChannel))
+                .isInstanceOf(MessagingException.class)
+                .hasMessageContaining("WRITE permission");
+    }
 }

@@ -5,18 +5,22 @@ import io.jsonwebtoken.JwtException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageChannel;
+import org.springframework.messaging.MessagingException;
 import org.springframework.messaging.simp.stomp.StompCommand;
 import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
 import org.springframework.messaging.support.ChannelInterceptor;
 import org.springframework.messaging.support.MessageHeaderAccessor;
 import org.springframework.stereotype.Component;
 
+import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 
 /**
- * Intercepts incoming STOMP messages.
- * Verifies that the user is authenticated (via Handshake session attributes or CONNECT frame)
- * and authorized to SUBSCRIBE or SEND to the specified destination.
+ * Intercepts incoming STOMP messages across Layers 2, 3, and 4 of WebSocket Security:
+ * - Layer 2 (CONNECT): Authenticates client using ticket header if not already done during handshake.
+ * - Layer 3 (SUBSCRIBE): Ensures subscription topic matches the ticket's threadId.
+ * - Layer 4 (SEND): Ensures destination matches threadId AND verifies WRITE permission.
  */
 @Component
 @RequiredArgsConstructor
@@ -31,19 +35,20 @@ public class TicketChannelInterceptor implements ChannelInterceptor {
             return message;
         }
 
-        // Authenticate client on initial STOMP CONNECT if not already authenticated during handshake
+        // Layer 2: STOMP CONNECT authentication
         if (StompCommand.CONNECT.equals(accessor.getCommand())) {
             Map<String, Object> sessionAttributes = accessor.getSessionAttributes();
             if (sessionAttributes != null && sessionAttributes.get("threadId") != null) {
                 String userId = (String) sessionAttributes.get("userId");
                 String threadId = (String) sessionAttributes.get("threadId");
+                List<String> permissions = getPermissionsFromAttributes(sessionAttributes);
                 if (accessor.isMutable()) {
-                    accessor.setUser(new TicketPrincipal(userId, threadId));
+                    accessor.setUser(new TicketPrincipal(userId, threadId, permissions));
                 }
                 return message; // Already authenticated at HTTP handshake
             }
 
-            // Extract from STOMP CONNECT headers (token, ticket, or Authorization)
+            // Extract ticket from STOMP CONNECT headers (token, ticket, or Authorization)
             String token = accessor.getFirstNativeHeader("token");
             if (token == null || token.isBlank()) {
                 token = accessor.getFirstNativeHeader("ticket");
@@ -60,40 +65,102 @@ public class TicketChannelInterceptor implements ChannelInterceptor {
                     Claims claims = jwtVerifier.verify(token);
                     String userId = claims.getSubject();
                     String threadId = claims.get("threadId", String.class);
+                    List<String> permissions = extractPermissions(claims);
+
                     if (sessionAttributes != null) {
                         sessionAttributes.put("userId", userId);
                         sessionAttributes.put("threadId", threadId);
+                        sessionAttributes.put("permissions", permissions);
                     }
                     if (accessor.isMutable()) {
-                        accessor.setUser(new TicketPrincipal(userId, threadId));
+                        accessor.setUser(new TicketPrincipal(userId, threadId, permissions));
                     }
                 } catch (JwtException e) {
-                    throw new org.springframework.messaging.MessagingException("Invalid authentication ticket: " + e.getMessage());
+                    throw new MessagingException("Invalid authentication ticket: " + e.getMessage());
                 }
             }
+            return message;
         }
 
-        if (StompCommand.SUBSCRIBE.equals(accessor.getCommand()) ||
-                StompCommand.SEND.equals(accessor.getCommand())) {
-
-            Map<String, Object> sessionAttributes = accessor.getSessionAttributes();
-            String tokenThreadId = sessionAttributes != null ? (String) sessionAttributes.get("threadId") : null;
-
-            if (tokenThreadId == null && accessor.getUser() instanceof TicketPrincipal tp) {
-                tokenThreadId = tp.getThreadId();
+        // Layer 3: STOMP SUBSCRIBE authorization (thread containment)
+        if (StompCommand.SUBSCRIBE.equals(accessor.getCommand())) {
+            TicketPrincipal principal = resolvePrincipal(accessor);
+            if (principal == null || principal.getThreadId() == null) {
+                throw new MessagingException("Unauthorized: Missing thread context in session");
             }
 
-            if (tokenThreadId == null) {
-                throw new org.springframework.messaging.MessagingException("Unauthorized: Missing thread context in session");
-            }
-
-            // Destinations are typically like /topic/{threadId} or /app/messages/{threadId}
             String destination = accessor.getDestination();
-            if (destination != null && !destination.contains(tokenThreadId)) {
-                throw new org.springframework.messaging.MessagingException("Unauthorized: Cannot access this thread destination");
+            if (destination != null && !destination.contains(principal.getThreadId())) {
+                throw new MessagingException("Unauthorized: Cannot access this thread destination: " + destination);
             }
+            return message;
+        }
+
+        // Layer 4: STOMP SEND authorization (thread containment + WRITE permission enforcement)
+        if (StompCommand.SEND.equals(accessor.getCommand())) {
+            String destination = accessor.getDestination();
+
+            // Allow /app/refresh-ticket without thread containment check
+            if (destination != null && destination.endsWith("/refresh-ticket")) {
+                return message;
+            }
+
+            TicketPrincipal principal = resolvePrincipal(accessor);
+            if (principal == null || principal.getThreadId() == null) {
+                throw new MessagingException("Unauthorized: Missing thread context in session");
+            }
+
+            if (destination != null && !destination.contains(principal.getThreadId())) {
+                throw new MessagingException("Unauthorized: Cannot access this thread destination: " + destination);
+            }
+
+            // Enforce WRITE permission
+            if (!principal.canWrite()) {
+                throw new MessagingException("Unauthorized: Ticket does not have WRITE permission to send messages");
+            }
+            return message;
         }
 
         return message;
+    }
+
+    private TicketPrincipal resolvePrincipal(StompHeaderAccessor accessor) {
+        if (accessor.getUser() instanceof TicketPrincipal tp) {
+            return tp;
+        }
+
+        Map<String, Object> sessionAttributes = accessor.getSessionAttributes();
+        if (sessionAttributes != null && sessionAttributes.get("threadId") != null) {
+            String userId = (String) sessionAttributes.get("userId");
+            String threadId = (String) sessionAttributes.get("threadId");
+            List<String> permissions = getPermissionsFromAttributes(sessionAttributes);
+            TicketPrincipal tp = new TicketPrincipal(userId, threadId, permissions);
+            if (accessor.isMutable()) {
+                accessor.setUser(tp);
+            }
+            return tp;
+        }
+
+        return null;
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<String> getPermissionsFromAttributes(Map<String, Object> attributes) {
+        Object perms = attributes.get("permissions");
+        if (perms instanceof List<?> list) {
+            return (List<String>) list;
+        }
+        return Collections.emptyList();
+    }
+
+    private static List<String> extractPermissions(Claims claims) {
+        Object permissionsObj = claims.get("permissions");
+        if (!(permissionsObj instanceof List<?> permissions)) {
+            return Collections.emptyList();
+        }
+        return permissions.stream()
+                .filter(String.class::isInstance)
+                .map(String.class::cast)
+                .toList();
     }
 }

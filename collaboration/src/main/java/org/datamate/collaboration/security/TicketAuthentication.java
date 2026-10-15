@@ -24,22 +24,28 @@ public class TicketAuthentication extends AbstractAuthenticationToken {
     public TicketAuthentication(Claims claims) {
         super(extractAuthorities(claims));
         this.claims = claims;
+        List<String> permissions = extractPermissions(claims);
         this.principal = new TicketPrincipal(
                 claims.getSubject(),
-                claims.get("threadId", String.class)
+                claims.get("threadId", String.class),
+                permissions
         );
         setAuthenticated(true);
     }
 
-    private static Collection<? extends GrantedAuthority> extractAuthorities(Claims claims) {
+    private static List<String> extractPermissions(Claims claims) {
         Object permissionsObj = claims.get("permissions");
         if (!(permissionsObj instanceof List<?> permissions)) {
             return Collections.emptyList();
         }
-        
         return permissions.stream()
                 .filter(String.class::isInstance)
                 .map(String.class::cast)
+                .toList();
+    }
+
+    private static Collection<? extends GrantedAuthority> extractAuthorities(Claims claims) {
+        return extractPermissions(claims).stream()
                 .map(p -> new SimpleGrantedAuthority("ROLE_" + p.toUpperCase()))
                 .collect(Collectors.toSet());
     }
@@ -60,5 +66,9 @@ public class TicketAuthentication extends AbstractAuthenticationToken {
     
     public String getThreadId() {
         return this.principal.getThreadId();
+    }
+
+    public List<String> getPermissions() {
+        return this.principal.getPermissions();
     }
 }
