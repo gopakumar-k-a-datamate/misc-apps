@@ -25,6 +25,7 @@ import java.util.UUID;
  *   <li>{@code POST /api/v1/collaboration/threads/{threadId}/messages} - Submit new message (CQRS Command)</li>
  *   <li>{@code GET  /api/v1/collaboration/threads/{threadId}/messages} - Fetch message history (CQRS Query)</li>
  * </ul>
+ * Authentication and thread binding are validated via the signed JWT Ticket filter.
  */
 @CrossOrigin
 @RestController

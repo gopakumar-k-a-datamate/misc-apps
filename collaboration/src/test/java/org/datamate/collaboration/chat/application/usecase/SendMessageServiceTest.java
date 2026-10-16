@@ -4,8 +4,10 @@ import com.datamate.bedrock.framework.storage.application.port.StorageService;
 import com.datamate.bedrock.framework.storage.domain.model.StorageObject;
 import org.datamate.collaboration.chat.application.dto.SendMessageCommand;
 import org.datamate.collaboration.chat.application.dto.SendMessageRequest;
+import org.datamate.collaboration.chat.application.mapper.MessageMapper;
 import org.datamate.collaboration.chat.application.port.out.AttachmentRepositoryPort;
 import org.datamate.collaboration.chat.application.port.out.DocumentConversionPort;
+import org.datamate.collaboration.chat.application.port.out.MessageBroadcastPort;
 import org.datamate.collaboration.chat.application.port.out.MessageRepositoryPort;
 import org.datamate.collaboration.chat.application.port.out.ThreadRepositoryPort;
 import org.datamate.collaboration.chat.domain.model.Attachment;
@@ -54,6 +56,12 @@ class SendMessageServiceTest {
 
     @Mock
     private DocumentConversionPort documentConversionPort;
+
+    @Mock
+    private MessageMapper messageMapper;
+
+    @Mock
+    private MessageBroadcastPort messageBroadcastPort;
 
     @InjectMocks
     private SendMessageService sendMessageService;

@@ -38,8 +38,9 @@ public class GetMessagesService implements GetMessagesUseCase {
                 .filter(java.util.Objects::nonNull)
                 .toList();
 
-        Map<UUID, Attachment> attachmentMap = attachmentRepository.findAllById(attachmentIds).stream()
-                .collect(Collectors.toMap(Attachment::getId, a -> a));
+        Map<UUID, Attachment> attachmentMap = attachmentIds.isEmpty() ? Map.of() :
+                attachmentRepository.findAllById(attachmentIds).stream()
+                        .collect(Collectors.toMap(Attachment::getId, a -> a, (a1, a2) -> a1));
 
         return messagesPaged.map(msg -> {
             Attachment attachment = msg.getAttachmentId() != null ? attachmentMap.get(msg.getAttachmentId()) : null;
