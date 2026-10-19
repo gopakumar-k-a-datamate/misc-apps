@@ -24,8 +24,8 @@ class ArchitectureEnforcementTest {
             .layer("Application").definedBy("..application..")
             // 3. The Infrastructure (REST, JPA, external APIs)
             .layer("Adapter").definedBy("..adapter..")
-            // 4. Global Configurations
-            .layer("Config").definedBy("..config..", "..exception..")
+            // 4. Global Configurations & Security Infrastructure
+            .layer("Config").definedBy("..config..", "..exception..", "..security..")
             
             // Hexagonal Dependency Rules:
             // Domain is the center; it cannot depend on anything outside itself.
