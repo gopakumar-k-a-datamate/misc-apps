@@ -23,18 +23,18 @@ class ChatTicketPropertiesTest {
         String pub1Base64 = Base64.getEncoder().encodeToString(pair1.getPublic().getEncoded());
         String pub2Base64 = Base64.getEncoder().encodeToString(pair2.getPublic().getEncoded());
 
-        ChatTicketProperties.IssuerConfig issuer1 = new ChatTicketProperties.IssuerConfig();
+        IssuerConfig issuer1 = new IssuerConfig();
         issuer1.setIssuer("restaurant-service");
         issuer1.setKid("restaurant-key-v1");
         issuer1.setPublicKey("-----BEGIN PUBLIC KEY-----\n" + pub1Base64 + "\n-----END PUBLIC KEY-----");
 
-        ChatTicketProperties.IssuerConfig issuer2 = new ChatTicketProperties.IssuerConfig();
+        IssuerConfig issuer2 = new IssuerConfig();
         issuer2.setIssuer("emr-service");
         issuer2.setKid("emr-key-v1");
         issuer2.setPublicKey(pub2Base64);
 
         ChatTicketProperties properties = new ChatTicketProperties();
-        properties.setIssuers(List.of(issuer1, issuer2));
+        properties.getIssuers().addAll(List.of(issuer1, issuer2));
 
         InMemoryKeyRegistry registry = new InMemoryKeyRegistry(properties);
         registry.initStaticKeys();

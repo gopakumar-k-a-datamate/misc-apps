@@ -139,11 +139,13 @@ public class TicketChannelInterceptor implements ChannelInterceptor {
         return null;
     }
 
-    @SuppressWarnings("unchecked")
     private List<String> getPermissionsFromAttributes(Map<String, Object> attributes) {
         Object perms = attributes.get("permissions");
         if (perms instanceof List<?> list) {
-            return (List<String>) list;
+            return list.stream()
+                    .filter(String.class::isInstance)
+                    .map(String.class::cast)
+                    .toList();
         }
         return Collections.emptyList();
     }

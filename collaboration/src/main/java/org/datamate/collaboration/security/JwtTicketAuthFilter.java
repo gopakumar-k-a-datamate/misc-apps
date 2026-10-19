@@ -9,105 +9,73 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ProblemDetail;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 import java.net.URI;
 import java.time.Instant;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
  * Middleware filter that intercepts incoming REST requests, extracts and verifies the signed JWT Ticket,
- * enforces request-level threadId binding (Section 6 of Chat Engine specification),
- * and sets the authenticated TicketPrincipal in the SecurityContext.
+ * delegates authorization to {@link TicketAccessValidator}, and sets the authenticated
+ * TicketPrincipal in the SecurityContext.
+ * <p>
+ * Follows Separation of Concerns (SoC) by delegating business authorization to {@link TicketAccessValidator}
+ * and keeping the filter focused purely on HTTP token resolution, authentication, and error formatting.
  */
-@RequiredArgsConstructor
+@Component
 public class JwtTicketAuthFilter extends OncePerRequestFilter {
 
     private static final String BEARER_PREFIX = "Bearer ";
-    private static final Pattern THREAD_PATH_PATTERN = Pattern.compile("/threads/([^/]+)");
 
     private final JwtVerifier jwtVerifier;
+    private final TicketAccessValidator accessValidator;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @EnableLogger
     private Logger logger;
 
+    public JwtTicketAuthFilter(JwtVerifier jwtVerifier, @Autowired(required = false) TicketAccessValidator accessValidator) {
+        this.jwtVerifier = jwtVerifier;
+        this.accessValidator = accessValidator != null ? accessValidator : new TicketAccessValidator();
+    }
+
+    public JwtTicketAuthFilter(JwtVerifier jwtVerifier) {
+        this(jwtVerifier, new TicketAccessValidator());
+    }
+
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
 
-        String token = null;
-        final String authHeader = request.getHeader(HttpHeaders.AUTHORIZATION);
-
-        if (authHeader != null && authHeader.startsWith(BEARER_PREFIX)) {
-            token = authHeader.substring(BEARER_PREFIX.length()).trim();
-        } else {
-            token = request.getParameter("ticket");
-            if (token == null || token.isBlank()) {
-                token = request.getParameter("token");
-            }
-            if (token != null) {
-                token = token.trim();
-            }
-        }
-
-        if (token == null || token.isBlank()) {
+        // 1. Token Resolution
+        String token = resolveToken(request);
+        if (token == null) {
             filterChain.doFilter(request, response);
             return;
         }
 
         try {
-            // Validate the signed JWT ticket
-            Claims claims = jwtVerifier.verify(token);
+            // 2. Authentication
+            TicketAuthentication authentication = authenticate(token);
+            TicketPrincipal principal = authentication.getTicketPrincipal();
 
-            // Step 5: Request-level threadId binding (Section 6 of plan)
-            String urlThreadId = extractThreadIdFromPath(request);
-            String tokenThreadId = claims.get("threadId", String.class);
-
-            if (urlThreadId != null && tokenThreadId != null && !urlThreadId.equalsIgnoreCase(tokenThreadId)) {
-                if (logger != null) {
-                    logger.warn("Thread ID binding mismatch: path [{}] does not match token [{}]", urlThreadId, tokenThreadId);
-                }
-                sendForbidden(response, "Access denied: ticket is not valid for thread " + urlThreadId);
+            // 3. Authorization (delegated to TicketAccessValidator)
+            if (!isAuthorized(request, principal, response)) {
                 return;
-            }
-
-            // Create Authentication and bind to Security Context
-            TicketAuthentication authentication = new TicketAuthentication(claims);
-
-            // Action-level permission check (READ vs WRITE)
-            String method = request.getMethod();
-            TicketPrincipal ticketPrincipal = authentication.getTicketPrincipal();
-            if ("POST".equalsIgnoreCase(method) || "PUT".equalsIgnoreCase(method) || "DELETE".equalsIgnoreCase(method) || "PATCH".equalsIgnoreCase(method)) {
-                if (!ticketPrincipal.getPermissions().isEmpty() && !ticketPrincipal.canWrite()) {
-                    if (logger != null) {
-                        logger.warn("Permission denied: ticket lacks WRITE permission for method [{}] on path [{}]", method, request.getRequestURI());
-                    }
-                    sendForbidden(response, "Access denied: ticket does not grant WRITE permission");
-                    return;
-                }
-            } else if ("GET".equalsIgnoreCase(method)) {
-                if (!ticketPrincipal.getPermissions().isEmpty() && !ticketPrincipal.canRead()) {
-                    if (logger != null) {
-                        logger.warn("Permission denied: ticket lacks READ permission for method [{}] on path [{}]", method, request.getRequestURI());
-                    }
-                    sendForbidden(response, "Access denied: ticket does not grant READ permission");
-                    return;
-                }
             }
 
             SecurityContextHolder.getContext().setAuthentication(authentication);
 
             if (logger != null) {
-                logger.debug("Successfully authenticated user: {} for thread: {}",
+                logger.debug("Successfully authenticated user: [{}] for thread: [{}]",
                         authentication.getSub(), authentication.getThreadId());
             }
 
@@ -122,17 +90,55 @@ public class JwtTicketAuthFilter extends OncePerRequestFilter {
         filterChain.doFilter(request, response);
     }
 
-    private String extractThreadIdFromPath(HttpServletRequest request) {
-        String uri = request.getRequestURI();
-        if (uri == null) {
-            return null;
+    // =========================================================================
+    // 1. Token Resolution
+    // =========================================================================
+
+    private String resolveToken(HttpServletRequest request) {
+        String authHeader = request.getHeader(HttpHeaders.AUTHORIZATION);
+        if (authHeader != null && authHeader.startsWith(BEARER_PREFIX)) {
+            return authHeader.substring(BEARER_PREFIX.length()).trim();
         }
-        Matcher matcher = THREAD_PATH_PATTERN.matcher(uri);
-        if (matcher.find()) {
-            return matcher.group(1);
+
+        String ticket = request.getParameter("ticket");
+        if (ticket == null || ticket.isBlank()) {
+            ticket = request.getParameter("token");
         }
-        return null;
+        return (ticket != null && !ticket.isBlank()) ? ticket.trim() : null;
     }
+
+    // =========================================================================
+    // 2. Authentication
+    // =========================================================================
+
+    private TicketAuthentication authenticate(String token) {
+        Claims claims = jwtVerifier.verify(token);
+        return new TicketAuthentication(claims);
+    }
+
+    // =========================================================================
+    // 3. Authorization (Delegated to TicketAccessValidator)
+    // =========================================================================
+
+    private boolean isAuthorized(HttpServletRequest request, TicketPrincipal principal, HttpServletResponse response)
+            throws IOException {
+
+        java.util.Optional<String> forbiddenReason = accessValidator.validateAccess(request, principal);
+        if (forbiddenReason.isPresent()) {
+            if (logger != null) {
+                logger.warn("Access denied on [{}] for user [{}]: {}",
+                        request.getRequestURI(), principal.getName(), forbiddenReason.get());
+            }
+            sendForbidden(response, forbiddenReason.get());
+            return false;
+        }
+
+        return true;
+    }
+
+    // =========================================================================
+    // 4. Error Response Formatting
+    // =========================================================================
 
     private void sendForbidden(HttpServletResponse response, String detail) throws IOException {
         response.setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE);
@@ -146,6 +152,10 @@ public class JwtTicketAuthFilter extends OncePerRequestFilter {
 
         response.getWriter().write(objectMapper.writeValueAsString(problemDetail));
     }
+
+    // =========================================================================
+    // 5. Endpoint Bypass Routing
+    // =========================================================================
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {

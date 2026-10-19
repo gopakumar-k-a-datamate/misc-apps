@@ -20,7 +20,11 @@ import java.time.Instant;
 @Component
 public class ChatAuthenticationEntryPoint implements AuthenticationEntryPoint {
 
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper objectMapper;
+
+    public ChatAuthenticationEntryPoint(ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
+    }
 
     @Override
     public void commence(HttpServletRequest request, HttpServletResponse response,
@@ -37,6 +41,14 @@ public class ChatAuthenticationEntryPoint implements AuthenticationEntryPoint {
         problemDetail.setProperty("errorCode", "AUTH_UNAUTHORIZED");
         problemDetail.setProperty("timestamp", Instant.now().toString());
 
-        response.getWriter().write(objectMapper.writeValueAsString(problemDetail));
+        java.util.Map<String, Object> body = new java.util.LinkedHashMap<>();
+        body.put("type", problemDetail.getType());
+        body.put("title", problemDetail.getTitle());
+        body.put("status", problemDetail.getStatus());
+        body.put("detail", problemDetail.getDetail());
+        body.put("errorCode", "AUTH_UNAUTHORIZED");
+        body.put("properties", problemDetail.getProperties());
+
+        response.getWriter().write(objectMapper.writeValueAsString(body));
     }
 }

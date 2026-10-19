@@ -42,7 +42,7 @@ public class InMemoryKeyRegistry implements KeyRegistry {
     @PostConstruct
     public void initStaticKeys() {
         if (chatTicketProperties != null && chatTicketProperties.getIssuers() != null) {
-            for (ChatTicketProperties.IssuerConfig issuerConfig : chatTicketProperties.getIssuers()) {
+            for (IssuerConfig issuerConfig : chatTicketProperties.getIssuers()) {
                 String kid = issuerConfig.getKid();
                 String issuer = issuerConfig.getIssuer();
                 String publicKeyPem = issuerConfig.getPublicKey();

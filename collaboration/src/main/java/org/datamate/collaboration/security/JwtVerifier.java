@@ -43,7 +43,27 @@ public class JwtVerifier {
      * @throws JwtException if the token is invalid, expired, or improperly signed.
      */
     public Claims verify(String token) throws JwtException {
-        // Step 1: Structural Check
+        validateTokenStructure(token);
+
+        AtomicReference<String> resolvedKidRef = new AtomicReference<>();
+        Locator<Key> keyLocator = createKeyLocator(resolvedKidRef);
+
+        Claims claims = parseClaims(token, keyLocator);
+
+        validateRequiredClaims(claims);
+        validateIssuer(claims, resolvedKidRef.get());
+
+        return claims;
+    }
+
+    // =========================================================================
+    // Private Helper Methods
+    // =========================================================================
+
+    /**
+     * Step 1: Structural check - ensures token is non-empty and has exactly 3 parts.
+     */
+    private void validateTokenStructure(String token) {
         if (token == null || token.isBlank()) {
             throw new JwtException("Token must not be null or blank");
         }
@@ -52,15 +72,17 @@ public class JwtVerifier {
         if (parts.length != 3) {
             throw new JwtException("Invalid JWT structure: token must contain exactly 3 dot-separated parts (header.payload.signature)");
         }
+    }
 
-        AtomicReference<String> resolvedKidRef = new AtomicReference<>();
-
-        // Steps 2 & 3: Algorithm check & Key resolution via Locator
-        Locator<Key> keyLocator = header -> {
+    /**
+     * Steps 2 & 3: Creates a key locator that validates the RS256 algorithm and resolves the public key by 'kid'.
+     */
+    private Locator<Key> createKeyLocator(AtomicReference<String> resolvedKidRef) {
+        return header -> {
             if (!(header instanceof JwsHeader jwsHeader)) {
                 throw new JwtException("Expected a signed JWS Header");
             }
-            
+
             String algorithm = jwsHeader.getAlgorithm();
             if (!ALLOWED_ALGORITHM.equalsIgnoreCase(algorithm)) {
                 throw new JwtException("Algorithm not allowed: " + algorithm + ". Only " + ALLOWED_ALGORITHM + " is permitted.");
@@ -76,16 +98,24 @@ public class JwtVerifier {
             return keyRegistry.getKey(kid)
                     .orElseThrow(() -> new JwtException("Unknown kid: " + kid));
         };
+    }
 
-        // Steps 4 & 5: RSA Signature Verification & Temporal Validation (exp, iat with clock skew)
-        Claims claims = Jwts.parser()
+    /**
+     * Steps 4 & 5: Parses signed claims, verifying RSA signature and temporal validity (exp, iat).
+     */
+    private Claims parseClaims(String token, Locator<Key> keyLocator) {
+        return Jwts.parser()
                 .keyLocator(keyLocator)
                 .clockSkewSeconds(CLOCK_SKEW_SECONDS)
                 .build()
                 .parseSignedClaims(token)
                 .getPayload();
+    }
 
-        // Step 6: Claims Validation
+    /**
+     * Step 6: Validates presence of mandatory claims: sub, threadId, and iss.
+     */
+    private void validateRequiredClaims(Claims claims) {
         String sub = claims.getSubject();
         if (sub == null || sub.isBlank()) {
             throw new JwtException("JWT Ticket is missing 'sub' (subject) claim");
@@ -100,20 +130,22 @@ public class JwtVerifier {
         if (iss == null || iss.isBlank()) {
             throw new JwtException("JWT Ticket is missing 'iss' (issuer) claim");
         }
+    }
 
+    /**
+     * Step 7: Verifies issuer is known and matches the kid's registered issuer (if any).
+     */
+    private void validateIssuer(Claims claims, String kid) {
+        String iss = claims.getIssuer();
         if (!keyRegistry.isKnownIssuer(iss)) {
             throw new JwtException("JWT Ticket has unknown or unregistered issuer: " + iss);
         }
 
-        // Cross-verify with kid's registered issuer if available
-        String kid = resolvedKidRef.get();
         if (kid != null) {
             Optional<String> registeredIssuer = keyRegistry.getIssuerForKid(kid);
             if (registeredIssuer.isPresent() && !registeredIssuer.get().equalsIgnoreCase(iss)) {
                 throw new JwtException("Issuer mismatch: token 'iss' [" + iss + "] does not match registered issuer [" + registeredIssuer.get() + "] for kid [" + kid + "]");
             }
         }
-
-        return claims;
     }
 }
