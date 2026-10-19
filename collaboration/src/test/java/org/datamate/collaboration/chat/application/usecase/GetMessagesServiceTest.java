@@ -61,12 +61,12 @@ class GetMessagesServiceTest {
                 "Hello",
                 false,
                 false,
-                null, null, Instant.now());
+                List.of(), null, Instant.now());
         Paged<Message> expectedPage = new Paged<>(List.of(message), 1, 20, 1, 1, false, false);
         MessageDto expectedDto = new MessageDto(message.getId(), message.getParentId(), message.getSenderId(), message.getText(), message.isFile(), message.isSystemMessage(), null, message.getTimestamp());
 
         when(messageRepository.findByThreadId(threadId, query)).thenReturn(expectedPage);
-        when(messageMapper.toDto(eq(message), any())).thenReturn(expectedDto);
+        when(messageMapper.toDto(eq(message), any(List.class))).thenReturn(expectedDto);
 
         Paged<MessageDto> result = getMessagesService.getMessages(threadId, query);
 
@@ -88,17 +88,73 @@ class GetMessagesServiceTest {
                 "Hello via CQRS Query",
                 false,
                 false,
-                null, null, Instant.now());
+                List.of(), null, Instant.now());
         Paged<Message> expectedPage = new Paged<>(List.of(message), 1, 20, 1, 1, false, false);
         MessageDto expectedDto = new MessageDto(message.getId(), message.getParentId(), message.getSenderId(), message.getText(), message.isFile(), message.isSystemMessage(), null, message.getTimestamp());
 
         when(messageRepository.findByThreadId(threadId, expectedPageQuery)).thenReturn(expectedPage);
-        when(messageMapper.toDto(eq(message), any())).thenReturn(expectedDto);
+        when(messageMapper.toDto(eq(message), any(List.class))).thenReturn(expectedDto);
 
         Paged<MessageDto> result = getMessagesService.getMessages(threadId, query);
 
         assertThat(result.content()).hasSize(1);
         assertThat(result.content().get(0).text()).isEqualTo("Hello via CQRS Query");
+    }
+
+    @Test
+    @DisplayName("should fetch and map all attachments when message has multiple attachments (Bug 8122)")
+    void shouldFetchAndMapAllAttachments_WhenMessageHasMultipleAttachments() {
+        PageQuery query = new PageQuery(1, 20);
+        String senderId = "user-123";
+        UUID attId1 = UUID.randomUUID();
+        UUID attId2 = UUID.randomUUID();
+        List<UUID> attachmentIds = List.of(attId1, attId2);
+
+        Message message = Message.restore(
+                UUID.randomUUID(),
+                threadId,
+                senderId,
+                "Multiple files message",
+                true,
+                false,
+                attachmentIds,
+                null,
+                Instant.now()
+        );
+
+        org.datamate.collaboration.chat.domain.model.Attachment att1 = org.datamate.collaboration.chat.domain.model.Attachment.create(
+                "file1.png", "image/png", 1024L, "http://minio/file1.png", null
+        );
+        org.datamate.collaboration.chat.domain.model.Attachment att2 = org.datamate.collaboration.chat.domain.model.Attachment.create(
+                "file2.png", "image/png", 2048L, "http://minio/file2.png", null
+        );
+        // Ensure IDs match
+        org.springframework.test.util.ReflectionTestUtils.setField(att1, "id", attId1);
+        org.springframework.test.util.ReflectionTestUtils.setField(att2, "id", attId2);
+
+        Paged<Message> pagedMessages = new Paged<>(List.of(message), 1, 20, 1, 1, false, false);
+        when(messageRepository.findByThreadId(threadId, query)).thenReturn(pagedMessages);
+        when(attachmentRepository.findAllById(eq(attachmentIds))).thenReturn(List.of(att1, att2));
+
+        MessageDto expectedDto = new MessageDto(
+                message.getId(),
+                null,
+                senderId,
+                "Multiple files message",
+                true,
+                false,
+                List.of(
+                        new org.datamate.collaboration.chat.application.dto.AttachmentResponseDto(attId1, message.getId(), "file1.png", "file1.png", "image/png", "url1", null),
+                        new org.datamate.collaboration.chat.application.dto.AttachmentResponseDto(attId2, message.getId(), "file2.png", "file2.png", "image/png", "url2", null)
+                ),
+                message.getTimestamp()
+        );
+        when(messageMapper.toDto(eq(message), eq(List.of(att1, att2)))).thenReturn(expectedDto);
+
+        Paged<MessageDto> result = getMessagesService.getMessages(threadId, query);
+
+        assertThat(result.content()).hasSize(1);
+        assertThat(result.content().get(0).attachments()).hasSize(2);
     }
 
     @Test
