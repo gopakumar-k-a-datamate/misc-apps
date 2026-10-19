@@ -1,0 +1,66 @@
+spring:
+  application:
+    name: pharmacy-microservice
+  datasource:
+    url: jdbc:postgresql://localhost:5433/pharmacy_db?options=-c%20TimeZone=Asia/Kolkata
+    username: myuser
+    password: mypassword
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    baseline-version: "0"
+    schemas: pharmacy
+    default-schema: pharmacy
+    locations: classpath:db/migration
+
+  # RabbitMQ — Subject Sync consumer
+  # Binds to the auth.subject.sync Fanout exchange published by identity-service.
+  # Must match the broker settings used by identity-service.
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
+
+server:
+  port: 8083
+
+# Bedrock Authz Configuration
+datamate:
+  authz:
+    opa:
+      config-path: classpath:opa-config.yaml
+    admin:
+      enabled: false
+    # OPA Bundle endpoint security
+    bundle:
+      api-key: ${BUNDLE_API_KEY:my-dev-secret}
+
+
+authz:
+  opa:
+    validation-url: http://localhost:8183
+    evaluation-url: http://localhost:8183/v1/data/app/authz/%s
+
+# JWT secret must match the identity service that signs the tokens
+bedrock:
+  security:
+    jwt:
+      secret: YourSuperSecretKeyThatIsAtLeast32CharactersLongForJWTGeneration
+
+logging:
+  level:
+    org.datamate.authz: DEBUG
+    org.datamate.pharmacy.messaging: DEBUG   # Logs subject sync receive/apply events
+
+# Swagger / OpenAPI Configuration
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    tags-sorter: alpha
+    operations-sorter: alpha
+  api-docs:
+    path: /v3/api-docs
+
+swagger:
+  show-permissions: true

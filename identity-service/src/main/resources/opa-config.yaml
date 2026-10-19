@@ -1,0 +1,13 @@
+services:
+  identity-service:
+    url: http://host.docker.internal:8085
+    headers:
+      Authorization: Bearer my-dev-secret
+
+bundles:
+  identity:
+    service: identity-service
+    resource: /internal/authz/bundle/identity
+    polling:
+      min_delay_seconds: 5
+      max_delay_seconds: 10

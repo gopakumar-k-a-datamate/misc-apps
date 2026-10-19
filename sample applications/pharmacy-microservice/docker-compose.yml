@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  postgres-pharmacy:
+    image: postgres:15
+    container_name: pharmacy_db
+    environment:
+      POSTGRES_DB: pharmacy_db
+      POSTGRES_USER: myuser
+      POSTGRES_PASSWORD: mypassword
+    ports:
+      - "5433:5432"
+
+  opa-pharmacy:
+    image: openpolicyagent/opa:latest
+    container_name: pharmacy_opa
+    command:
+      - "run"
+      - "--server"
+      - "--addr=0.0.0.0:8183"
+      - "--config-file=/config/opa-config.yaml"
+    volumes:
+      - ./src/main/resources/opa-config.yaml:/config/opa-config.yaml:ro
+    ports:
+      - "8183:8183"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

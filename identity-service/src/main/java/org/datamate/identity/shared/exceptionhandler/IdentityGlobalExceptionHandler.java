@@ -7,6 +7,7 @@ import com.datamate.bedrock.framework.common.exception.spring.service.web.Global
 import com.datamate.bedrock.framework.common.logging.annotation.EnableLogger;
 import com.datamate.bedrock.framework.common.logging.service.BedrockMDC;
 import com.datamate.bedrock.framework.common.logging.service.Logger;
+import com.datamate.bedrock.framework.common.logging.util.LoggerManager;
 import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.exc.InvalidFormatException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -14,6 +15,8 @@ import org.springframework.context.MessageSource;
 import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
+import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -23,6 +26,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.validation.FieldError;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
+import java.lang.reflect.Field;
 import java.time.OffsetDateTime;
 import java.util.Arrays;
 import java.util.Locale;
@@ -56,10 +60,10 @@ public class IdentityGlobalExceptionHandler extends GlobalExceptionHandler {
         this.messageSource = messageSource;
 
         try {
-            Logger classLogger = com.datamate.bedrock.framework.common.logging.util.LoggerManager.getLogger(this.getClass());
+            Logger classLogger = LoggerManager.getLogger(this.getClass());
             this.log = classLogger;
 
-            java.lang.reflect.Field parentLoggerField = GlobalExceptionHandler.class.getDeclaredField("logger");
+            Field parentLoggerField = GlobalExceptionHandler.class.getDeclaredField("logger");
             parentLoggerField.setAccessible(true);
             parentLoggerField.set(this, classLogger);
         } catch (Exception e) {
@@ -218,10 +222,10 @@ public class IdentityGlobalExceptionHandler extends GlobalExceptionHandler {
 
         // LOCKED patterns (concurrent edit lock — RFC 4918)
         if (errorCode.contains(".lock.lockedByOther")) {
-            return HttpStatus.LOCKED;
+            return HttpStatus.LOCKED;   // 423
         }
 
-        // CONFLICT patterns
+        // CONFLICT patterns (already exists, or lock not owned)
         if (errorCode.endsWith(".alreadyExists")
                 || errorCode.endsWith(".lock.notOwner")
                 || errorCode.contains(".ALREADY_EXISTS")
@@ -247,6 +251,7 @@ public class IdentityGlobalExceptionHandler extends GlobalExceptionHandler {
             return HttpStatus.BAD_REQUEST;
         }
 
+        // Default
         return HttpStatus.BAD_REQUEST;
     }
 
@@ -340,8 +345,8 @@ public class IdentityGlobalExceptionHandler extends GlobalExceptionHandler {
     }
 
     @ExceptionHandler({
-            org.springframework.orm.ObjectOptimisticLockingFailureException.class,
-            org.springframework.dao.OptimisticLockingFailureException.class
+            ObjectOptimisticLockingFailureException.class,
+            OptimisticLockingFailureException.class
     })
     public ProblemDetail handleOptimisticLocking(Exception ex, HttpServletRequest request) {
         String traceId = Optional.ofNullable(BedrockMDC.get(TRACE_ID_KEY)).orElse("unknown");

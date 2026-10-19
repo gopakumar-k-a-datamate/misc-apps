@@ -1,0 +1,22 @@
+spring:
+  datasource:
+    url: jdbc:tc:postgresql:15:///testdb?options=-c%20TimeZone=UTC
+    driver-class-name: org.testcontainers.jdbc.ContainerDatabaseDriver
+  jpa:
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    hibernate:
+      ddl-auto: none
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    baseline-version: "0"
+    locations: classpath:db/migration
+    schemas: pharmacy
+    default-schema: pharmacy
+
+authz:
+  opa:
+    evaluation-url: "http://localhost:8181/v1/data"
+    validation-url: "http://localhost:8181/v1/data"
+  jpa:
+    enabled: true
